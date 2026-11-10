@@ -9,6 +9,7 @@ chmod -R 775 database storage bootstrap/cache 2>/dev/null || true
 # Run database migrations and seed initial default data
 php artisan migrate --force
 php artisan db:seed --force
+php artisan db:seed --class=AiPerformanceSeeder --force
 
 # Clear cache
 php artisan config:clear

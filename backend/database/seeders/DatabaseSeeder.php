@@ -25,6 +25,10 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        if (Role::where('name', 'admin')->exists()) {
+            return;
+        }
+
         // 1. Roles
         $roleAdmin = Role::create([
             'name' => 'admin',

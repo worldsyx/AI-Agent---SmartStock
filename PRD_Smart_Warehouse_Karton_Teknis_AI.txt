@@ -1,0 +1,947 @@
+PRD TEKNIS — SMART WAREHOUSE KARTON
+Versi: 2.0
+Tanggal: 20 Oktober 2026
+Status: Spesifikasi implementasi untuk AI coding assistant
+
+======================================================================
+0. INSTRUKSI UTAMA UNTUK AI CODING ASSISTANT
+======================================================================
+
+Bangun aplikasi web Smart Warehouse – Karton berdasarkan spesifikasi ini.
+Gunakan stack yang ditentukan dan pertahankan fokus pada aktivitas
+pergudangan karton dan paper roll.
+
+ATURAN WAJIB:
+1. Jangan menambahkan fitur proses produksi, curing, antrean mesin, atau
+   pengelolaan proses manufaktur.
+2. Jangan mengubah stok secara otomatis berdasarkan prediksi AI.
+   Penyesuaian stok harus melalui pemeriksaan dan persetujuan sesuai role.
+3. Jangan melakukan relokasi besar, pembelian, atau pembatalan PO secara
+   otomatis. Sistem hanya memberikan rekomendasi.
+4. Semua transaksi stok harus tervalidasi dan tercatat dalam audit log.
+5. Gunakan PostgreSQL sebagai database utama.
+6. Laravel adalah backend utama dan pemilik aturan bisnis/transaksi.
+7. Python Flask adalah AI/data service; bukan pengganti backend Laravel.
+8. Implementasikan bertahap. Jangan membuat empat AI Agent kompleks
+   sekaligus. Mulai dari MVP dan Stock Accuracy Agent.
+9. Jangan mengarang API eksternal yang tidak tersedia. Jika API dari
+   katalog public-apis tidak sesuai, gunakan analisis internal berbasis
+   aturan dan jelaskan keterbatasannya.
+10. Jika spesifikasi belum menentukan nilai seperti ambang kapasitas,
+    umur stok, atau toleransi selisih, buat konfigurasi yang dapat diatur
+    Admin/Manajer. Jangan menetapkan angka bisnis secara diam-diam.
+
+======================================================================
+1. RINGKASAN PRODUK
+======================================================================
+
+Smart Warehouse – Karton adalah aplikasi web untuk mengelola inventaris
+karton dan paper roll, melacak lokasi penyimpanan, memantau kapasitas
+gudang, menjalankan stock opname, serta membantu penerapan FIFO.
+
+Aplikasi memiliki empat layanan analisis/AI Agent:
+- Stock Accuracy & Inventory Discrepancy Agent
+- Warehouse Slotting & Location Optimization Agent
+- Warehouse Capacity & Overstock Detection Agent
+- Carton Inventory Aging & FIFO Agent
+
+Agent menghasilkan temuan, alasan, prioritas, dan rekomendasi.
+Operator/manajer tetap melakukan verifikasi dan tindakan yang berisiko.
+
+======================================================================
+2. TUJUAN DAN MASALAH YANG DITANGANI
+======================================================================
+
+Masalah:
+A. Ketidakakuratan stok akibat salah input, transaksi ganda, perpindahan
+   tidak tercatat, atau hasil stock opname yang berbeda.
+B. Barang sulit ditemukan karena hierarki lokasi tidak konsisten.
+C. Kapasitas gudang/zona tidak terpantau sehingga ada area penuh dan
+   area yang kurang dimanfaatkan.
+D. Stok lama tertahan karena barang yang baru masuk diletakkan di depan
+   barang lama atau urutan pengambilan FIFO tidak konsisten.
+
+Tujuan:
+- Meningkatkan akurasi stok.
+- Mempercepat pencarian dan pengambilan barang.
+- Memberikan visibilitas kapasitas.
+- Memprioritaskan pengambilan stok sesuai FIFO.
+- Menyediakan rekomendasi yang dapat dijelaskan.
+- Menyediakan jejak audit transaksi dan perubahan.
+
+======================================================================
+3. PENGGUNA DAN ROLE (RBAC)
+======================================================================
+
+3.1 Operator Gudang
+- Melihat stok dan lokasi barang.
+- Mencatat penerimaan, pengeluaran, dan perpindahan.
+- Scan QR/barcode atau memasukkan kode manual.
+- Melakukan stock opname dan mengirim hasil pemeriksaan.
+- Mengonfirmasi barang/lot yang benar-benar diambil.
+- Tidak menyetujui penyesuaian stok yang memerlukan hak Manajer.
+
+3.2 Manajer/Kepala Gudang
+- Melihat dashboard, laporan, notifikasi, dan audit.
+- Meninjau serta menyetujui penyesuaian stok.
+- Mengatur ambang kapasitas, umur stok, dan aturan FIFO.
+- Menyetujui relokasi sesuai kebijakan.
+- Meninjau rekomendasi AI dan riwayat tindak lanjut.
+
+3.3 Admin
+- Mengelola akun, role, master barang, vendor, gudang, zona, rak,
+  dan slot.
+- Mengatur parameter aplikasi dan integrasi.
+- Tidak boleh menghapus histori transaksi yang sudah tercatat.
+
+======================================================================
+4. ARSITEKTUR SISTEM
+======================================================================
+
+4.1 Komponen
+
+A. Frontend React
+- React.js + Vite.
+- Tailwind CSS untuk tampilan responsif.
+- Lucide React atau Tabler Icons.
+- Kamera perangkat kompatibel untuk QR/barcode.
+- Berkomunikasi dengan Laravel melalui HTTPS REST API/JSON.
+- Tidak mengakses database secara langsung.
+- Tidak menyimpan kredensial database atau API rahasia di browser.
+
+B. Backend Laravel
+- PHP Laravel sebagai API utama.
+- Mengelola login, RBAC, validasi, master data, transaksi stok,
+  persetujuan, laporan, dan audit.
+- Memiliki aturan bisnis yang menjadi sumber kebenaran stok.
+- Mengirim data analisis yang diperlukan ke Python Flask.
+- Mengonsumsi hasil Python dan menyimpannya sebagai rekomendasi/temuan.
+- Menyediakan endpoint bagi React.
+
+C. Database PostgreSQL
+- Menyimpan akun/role, master barang, lokasi, lot, saldo stok,
+  transaksi, stock opname, rekomendasi AI, dan audit log.
+- Transaksi stok dilakukan secara atomik.
+- Gunakan foreign key, unique constraint, check constraint, indeks,
+  serta migrasi database.
+
+D. Python Flask AI/Data Service
+- Microservice internal untuk analisis.
+- Menggunakan Pandas/NumPy bila dibutuhkan.
+- Pada tahap awal gunakan rule-based dan perhitungan deterministik.
+- Menerima data melalui endpoint internal yang diamankan.
+- Mengembalikan hasil terstruktur: jenis temuan, objek terkait, alasan,
+  tingkat prioritas, rekomendasi, dan data pendukung.
+- Tidak menulis saldo stok secara langsung ke PostgreSQL.
+- Laravel tetap menjadi pihak yang memvalidasi dan menyimpan hasil.
+
+E. API eksternal
+- Repositori public-apis/public-apis digunakan sebagai katalog untuk
+  mencari kemungkinan API publik yang relevan.
+- Katalog tersebut bukan model AI atau layanan inferensi AI.
+- Integrasi eksternal hanya dibuat jika ada API yang benar-benar sesuai,
+  dokumentasi tersedia, kebutuhan jelas, dan izin/ketentuan penggunaannya
+  dapat dipenuhi.
+- Fitur inti inventaris, lokasi, kapasitas, dan FIFO harus tetap bekerja
+  tanpa API eksternal.
+- Jangan mengirim data inventaris, vendor, atau data sensitif gudang ke
+  API publik tanpa persetujuan dan penilaian keamanan.
+
+4.2 Diagram alur
+
+Operator / Manajer / Admin
+        |
+        v
+React + Vite (UI)
+        |
+        | HTTPS REST API / JSON
+        v
+Laravel API (Auth, RBAC, Validasi, Business Rules)
+        |
+        +----------------------+
+        |                      |
+        v                      v
+PostgreSQL             Python Flask AI Service
+(transaksi, stok,      (analisis/rule engine)
+ master, audit)               |
+        ^                      |
+        +---- hasil analisis ---+
+               |
+               v
+Laravel menyimpan temuan/rekomendasi
+               |
+               v
+Dashboard React -> verifikasi manusia -> tindakan berizin -> audit log
+
+4.3 Batas tanggung jawab
+- React: presentasi dan interaksi pengguna.
+- Laravel: sumber kebenaran aturan dan perubahan data.
+- PostgreSQL: penyimpanan terstruktur dan konsistensi transaksi.
+- Python: analisis dan rekomendasi, bukan otoritas mutasi stok.
+- API publik: opsional, bukan ketergantungan aplikasi inti.
+
+======================================================================
+5. STRUKTUR APLIKASI WEB
+======================================================================
+
+5.1 Login dan akses
+- Login/logout.
+- Pengelolaan sesi/token secara aman.
+- Role-based access control.
+- Penolakan akses halaman/API jika role tidak sesuai.
+
+5.2 Dashboard
+- Jumlah SKU dan stok.
+- Temuan selisih stok yang perlu diperiksa.
+- Kapasitas gudang/zona terpakai.
+- Stok lama dan rekomendasi FIFO.
+- Notifikasi dan tugas yang belum selesai.
+- Ringkasan status rekomendasi Agent.
+
+5.3 Master Inventaris
+- Daftar karton dan paper roll.
+- Kode SKU, nama/jenis, spesifikasi/ukuran, satuan.
+- Vendor, status, dan informasi relevan.
+- Detail lot/tumpukan dan tanggal penerimaan.
+- Riwayat penerimaan, pengeluaran, penyesuaian.
+- Filter berdasarkan kode, jenis, lokasi, vendor, tanggal.
+
+5.4 Scan dan Transaksi
+- Scan QR/barcode melalui kamera atau input kode manual.
+- Penerimaan barang.
+- Pengeluaran barang.
+- Perpindahan lokasi.
+- Validasi transaksi ganda.
+- Konfirmasi berhasil/gagal yang jelas.
+- Bukti transaksi dan identitas operator.
+
+5.5 Peta Lokasi Gudang
+- Hierarki: Gudang > Zona > Rak > Slot.
+- Menampilkan stok pada setiap lokasi.
+- Petunjuk lokasi pengambilan.
+- Perpindahan memerlukan scan/konfirmasi lokasi asal dan tujuan.
+- Histori lokasi lama dan baru.
+
+5.6 Stock Opname
+- Membuat sesi berdasarkan zona atau kategori.
+- Operator scan dan menghitung stok fisik.
+- Sistem membandingkan hitungan fisik dengan stok sistem.
+- Selisih menjadi kasus pemeriksaan.
+- Penyesuaian saldo baru berlaku setelah persetujuan yang berwenang.
+- Simpan nilai sebelum/sesudah, alasan, pelaksana, dan penyetuju.
+
+5.7 Kapasitas Gudang
+- Pengaturan kapasitas per zona/rak/slot.
+- Satuan kapasitas harus konsisten: slot, palet, luas, atau volume.
+- Tampilan tingkat pemakaian.
+- Peringatan saat melewati ambang.
+- Rekomendasi relokasi atau penjadwalan penerimaan.
+- Tidak melakukan relokasi atau membatalkan pesanan otomatis.
+
+5.8 FIFO dan Umur Stok
+- Tanggal penerimaan dan umur penyimpanan.
+- ID lot/tumpukan.
+- Rekomendasi lot yang diambil lebih dahulu.
+- Peringatan stok yang melewati batas umur konfigurasi.
+- Catatan kondisi stok lama: lembap, sobek, penyok, kemasan rusak.
+- FIFO mempertimbangkan tanggal masuk dan aturan/kondisi barang.
+- Operator mengonfirmasi lot yang benar-benar keluar.
+
+5.9 Laporan dan Audit
+- Laporan stok saat ini.
+- Laporan transaksi.
+- Laporan selisih stock opname.
+- Laporan kapasitas.
+- Laporan umur stok.
+- Ekspor CSV/Excel.
+- Log pengguna, waktu, perubahan, dan alasan.
+
+5.10 Halaman Rekomendasi AI
+- Daftar rekomendasi berdasarkan Agent.
+- Filter Agent, prioritas, status, lokasi, dan tanggal.
+- Detail temuan: objek, data pemicu, alasan, dan saran.
+- Status: Baru, Ditinjau, Disetujui, Ditolak, Selesai.
+- Catatan tindakan/verifikasi manusia.
+- Jangan menampilkan rekomendasi seolah-olah tindakan sudah dilakukan.
+
+======================================================================
+6. EMPAT AI AGENT
+======================================================================
+
+6.1 Stock Accuracy & Inventory Discrepancy Agent
+
+Input:
+- Saldo stok sistem.
+- Hasil scan dan hitungan fisik.
+- Histori transaksi.
+- Catatan sesi stock opname.
+
+Analisis:
+- Membandingkan stok sistem dan fisik.
+- Menandai selisih.
+- Mendeteksi indikasi transaksi ganda atau transaksi yang belum tercatat,
+  jika didukung data yang tersedia.
+
+Output:
+- Daftar anomali.
+- Nilai selisih.
+- Prioritas pemeriksaan.
+- Data pendukung dan rekomendasi hitung ulang.
+
+Alur:
+Operator memeriksa ulang -> Manajer menyetujui penyesuaian -> Laravel
+memvalidasi dan memperbarui stok -> audit log tercatat.
+
+6.2 Warehouse Slotting & Location Optimization Agent
+
+Input:
+- Master lokasi.
+- Kapasitas slot.
+- Frekuensi barang keluar.
+- Histori perpindahan.
+
+Analisis:
+- Menilai lokasi penyimpanan dan pola pengambilan.
+- Mengusulkan lokasi yang lebih mudah dijangkau untuk barang yang sering
+  keluar, dengan mempertimbangkan kapasitas dan aturan lokasi.
+
+Output:
+- Rekomendasi lokasi baru.
+- Alasan rekomendasi.
+- Petunjuk/rute pengambilan jika data memungkinkan.
+
+Alur:
+Manajer/operator meninjau -> menyetujui relokasi -> operator melakukan
+perpindahan -> sistem mencatat lokasi lama dan baru.
+
+6.3 Warehouse Capacity & Overstock Detection Agent
+
+Input:
+- Kapasitas zona/rak.
+- Stok aktual.
+- Stok masuk yang direncanakan jika tersedia.
+- Histori penggunaan kapasitas.
+
+Analisis:
+- Menghitung pemakaian kapasitas.
+- Mendeteksi zona penuh, stok berlebih, atau ruang kurang dimanfaatkan.
+
+Output:
+- Peringatan kapasitas.
+- Rekomendasi penataan/relokasi.
+- Saran meninjau rencana penerimaan atau pembelian.
+
+Alur:
+Manajer menentukan tindak lanjut. Agent tidak membatalkan PO atau
+pesanan vendor.
+
+6.4 Carton Inventory Aging & FIFO Agent
+
+Input:
+- Tanggal penerimaan.
+- ID lot/tumpukan.
+- Lokasi.
+- Histori pengeluaran.
+
+Analisis:
+- Menghitung umur stok.
+- Mengurutkan kandidat pengambilan berdasarkan tanggal masuk.
+- Mempertimbangkan aturan dan kondisi barang yang berlaku.
+
+Output:
+- Daftar stok lama.
+- Rekomendasi pengambilan FIFO.
+- Peringatan pemeriksaan kondisi.
+
+Alur:
+Operator mengonfirmasi lot yang diambil -> Laravel mencatat transaksi
+pengeluaran dan lot terkait.
+
+6.5 Kontrak output Agent (format konseptual)
+
+Setiap hasil Agent setidaknya memiliki:
+- agent_type
+- generated_at
+- entity_type
+- entity_id
+- severity (info, low, medium, high)
+- title
+- explanation
+- evidence (data pemicu)
+- recommendation
+- status
+- reviewed_by (jika ditinjau)
+- reviewed_at (jika ditinjau)
+
+Hasil harus dapat dijelaskan dan ditelusuri ke data sumber. Jangan
+menghasilkan keputusan stok yang tidak didukung data.
+
+======================================================================
+7. MODEL DATA POSTGRESQL
+======================================================================
+
+Rancangan tabel minimum. Nama kolom dapat disesuaikan saat implementasi,
+tetapi relasi dan prinsip konsistensi harus dipertahankan.
+
+7.1 users
+- id (PK)
+- name
+- email (unique)
+- password_hash
+- role_id (FK)
+- is_active
+- created_at, updated_at
+
+7.2 roles
+- id (PK)
+- name (operator, manager, admin)
+- permissions/configuration jika diperlukan
+
+7.3 warehouses
+- id (PK)
+- code (unique)
+- name
+- address (opsional)
+- is_active
+
+7.4 warehouse_zones
+- id (PK)
+- warehouse_id (FK)
+- code
+- name
+- capacity_value
+- capacity_unit
+- warning_threshold
+- unique (warehouse_id, code)
+
+7.5 storage_locations
+- id (PK)
+- zone_id (FK)
+- parent_location_id (FK, nullable; untuk hierarki jika dipakai)
+- location_type (rack/slot)
+- code
+- capacity_value
+- capacity_unit
+- is_active
+- unique sesuai aturan kode lokasi
+
+7.6 products
+- id (PK)
+- sku (unique)
+- name
+- category (karton/paper_roll)
+- specification
+- unit
+- is_active
+
+7.7 vendors
+- id (PK)
+- code (unique)
+- name
+- contact fields seperlunya
+
+7.8 inventory_lots
+- id (PK)
+- product_id (FK)
+- vendor_id (FK, nullable)
+- received_at
+- initial_quantity
+- current_quantity
+- unit
+- condition_status
+- created_at, updated_at
+
+7.9 inventory_balances
+- id (PK)
+- product_id (FK)
+- lot_id (FK)
+- location_id (FK)
+- quantity
+- updated_at
+- unique (lot_id, location_id)
+- quantity tidak boleh negatif
+
+7.10 inventory_transactions
+- id (PK)
+- transaction_type (receipt, issue, transfer, adjustment)
+- product_id (FK)
+- lot_id (FK)
+- from_location_id (FK, nullable)
+- to_location_id (FK, nullable)
+- quantity
+- reference_code (unique/idempotency key sesuai desain)
+- performed_by (FK users)
+- approved_by (FK users, nullable)
+- reason
+- created_at
+
+7.11 stocktake_sessions
+- id (PK)
+- code
+- scope/location/category
+- status (draft, counting, submitted, reviewed, closed)
+- created_by
+- reviewed_by (nullable)
+- started_at, submitted_at, reviewed_at
+
+7.12 stocktake_items
+- id (PK)
+- session_id (FK)
+- product_id (FK)
+- lot_id (FK, nullable)
+- location_id (FK)
+- system_quantity
+- counted_quantity
+- variance
+- recount_required
+- notes
+
+7.13 ai_findings
+- id (PK)
+- agent_type
+- entity_type
+- entity_id
+- severity
+- title
+- explanation
+- evidence_json (JSONB)
+- recommendation
+- status
+- generated_at
+- reviewed_by (nullable)
+- reviewed_at (nullable)
+- resolution_notes (nullable)
+
+7.14 audit_logs
+- id (PK)
+- user_id (FK)
+- action
+- entity_type
+- entity_id
+- before_json (JSONB, nullable)
+- after_json (JSONB, nullable)
+- reason (nullable)
+- created_at
+
+7.15 system_settings
+- id (PK)
+- key (unique)
+- value_json (JSONB)
+- updated_by (FK)
+- updated_at
+
+7.16 Aturan database
+- Semua foreign key harus valid.
+- Quantity transaksi harus lebih besar dari nol.
+- Saldo tidak boleh negatif.
+- Transaksi stok dan update saldo harus berada dalam satu database
+  transaction.
+- Gunakan row locking/strategi concurrency yang sesuai saat stok yang
+  sama diubah bersamaan.
+- Gunakan idempotency key/reference_code agar request ulang tidak
+  menggandakan transaksi.
+- Histori transaksi dan audit tidak dihapus melalui UI biasa.
+- Gunakan migration Laravel untuk perubahan schema.
+
+======================================================================
+8. REST API LARAVEL
+======================================================================
+
+Semua endpoint berada di prefix /api/v1 dan menggunakan HTTPS di
+lingkungan produksi. Endpoint yang memerlukan login harus dilindungi
+autentikasi dan RBAC.
+
+8.1 Auth
+- POST   /auth/login
+- POST   /auth/logout
+- GET    /auth/me
+
+8.2 Dashboard
+- GET    /dashboard/summary
+- GET    /dashboard/alerts
+
+8.3 Master data
+- GET/POST       /products
+- GET/PATCH      /products/{id}
+- GET/POST       /vendors
+- GET/POST       /warehouses
+- GET/POST       /zones
+- GET/POST       /locations
+
+8.4 Inventaris
+- GET    /inventory
+- GET    /inventory/{productId}
+- GET    /inventory/lots/{lotId}
+- GET    /inventory/locations/{locationId}
+
+8.5 Transaksi
+- POST   /transactions/receipts
+- POST   /transactions/issues
+- POST   /transactions/transfers
+- POST   /transactions/adjustments
+- GET    /transactions
+- GET    /transactions/{id}
+
+8.6 Stock opname
+- POST   /stocktakes
+- GET    /stocktakes
+- GET    /stocktakes/{id}
+- POST   /stocktakes/{id}/count
+- POST   /stocktakes/{id}/submit
+- POST   /stocktakes/{id}/recount
+- POST   /stocktakes/{id}/approve
+- POST   /stocktakes/{id}/reject
+
+8.7 Rekomendasi AI
+- GET    /ai/findings
+- GET    /ai/findings/{id}
+- POST   /ai/findings/{id}/review
+- POST   /ai/findings/{id}/approve
+- POST   /ai/findings/{id}/reject
+- POST   /ai/findings/{id}/resolve
+- POST   /ai/run/{agentType} (admin/manager atau job internal)
+
+8.8 Laporan dan audit
+- GET    /reports/inventory
+- GET    /reports/transactions
+- GET    /reports/stocktake
+- GET    /reports/capacity
+- GET    /reports/aging
+- GET    /audit-logs
+
+8.9 Standar API
+- Format request/response JSON.
+- Validasi input dan pesan error konsisten.
+- Pagination, sorting, dan filter untuk daftar besar.
+- Kode HTTP yang sesuai.
+- Jangan mengembalikan password hash atau secret.
+- Endpoint mutasi harus mencatat user, waktu, dan alasan.
+- Periksa izin di backend; menyembunyikan tombol frontend saja tidak
+  cukup.
+
+======================================================================
+9. PYTHON FLASK AI SERVICE
+======================================================================
+
+9.1 Tanggung jawab
+- Menyediakan endpoint analisis internal.
+- Menjalankan perhitungan dan rule engine Agent.
+- Mengembalikan temuan/rekomendasi terstruktur.
+- Tidak mengelola login pengguna akhir.
+- Tidak mengubah saldo atau transaksi PostgreSQL secara langsung.
+
+9.2 Endpoint internal konseptual
+- GET  /health
+- POST /analyze/stock-accuracy
+- POST /analyze/slotting
+- POST /analyze/capacity
+- POST /analyze/aging-fifo
+
+Endpoint harus hanya dapat dipanggil layanan backend yang berwenang.
+Gunakan autentikasi service-to-service, timeout, validasi schema, dan
+logging. Jangan membuka endpoint analisis tanpa perlindungan ke internet.
+
+9.3 Tahapan AI
+Tahap MVP:
+- Rule-based/deterministik.
+- Alasan setiap temuan dapat dijelaskan.
+- Tidak perlu model machine learning eksternal.
+
+Tahap lanjutan:
+- Evaluasi kebutuhan ML hanya setelah data historis cukup, bersih,
+  representatif, dan ada metrik evaluasi.
+- Model tidak boleh mengubah aturan persetujuan dan kontrol stok.
+
+======================================================================
+10. GITHUB PUBLIC-APIS DAN INTEGRASI EKSTERNAL
+======================================================================
+
+Referensi yang diminta:
+https://github.com/public-apis/public-apis
+
+Penggunaan:
+1. Repositori ini merupakan daftar/katalog API publik.
+2. Katalog dapat ditelusuri untuk menemukan API yang mungkin relevan,
+   tetapi bukan layanan AI inference dan tidak menyediakan jaminan bahwa
+   API tertentu cocok untuk warehouse.
+3. Jangan menganggap semua API dalam katalog gratis, stabil, aman,
+   atau boleh digunakan untuk data perusahaan.
+4. Sebelum integrasi, periksa dokumentasi API, autentikasi, batas
+   pemakaian, lisensi/ketentuan, status aktif, dan kebijakan data.
+5. Jangan mengirim data stok, vendor, lokasi internal, atau data sensitif
+   ke API pihak ketiga tanpa izin dan penilaian keamanan.
+6. Jika tidak ada API yang sesuai, gunakan layanan Python internal
+   dengan aturan analisis dari PRD. Fitur inti tidak boleh gagal karena
+   API eksternal tidak tersedia.
+7. Jangan membuat nama endpoint, API key, atau respons API palsu untuk
+   menyatakan integrasi telah selesai.
+8. Simpan secret di environment backend/server, bukan di React.
+
+======================================================================
+11. KEAMANAN, KONSISTENSI, DAN AUDIT
+======================================================================
+
+- Gunakan HTTPS untuk komunikasi.
+- Password disimpan dengan hashing aman melalui Laravel.
+- Terapkan RBAC di setiap endpoint.
+- Validasi input di Laravel dan Flask.
+- Gunakan transaksi database untuk mutasi stok.
+- Terapkan locking/concurrency control untuk mencegah saldo negatif.
+- Gunakan idempotency untuk transaksi yang berpotensi dikirim ulang.
+- Audit perubahan stok, lokasi, konfigurasi, persetujuan, dan status AI.
+- Jangan menyimpan secret dalam repository Git.
+- Batasi akses service Python hanya untuk backend yang diizinkan.
+- Catat error tanpa membocorkan password/token atau data sensitif.
+- Backup PostgreSQL dan uji pemulihan secara berkala.
+- Gunakan data uji/fiktif untuk development.
+
+======================================================================
+12. ALUR UTAMA
+======================================================================
+
+12.1 Penerimaan
+1. Operator memilih/scan SKU.
+2. Operator memasukkan lot, vendor, jumlah, dan lokasi tujuan.
+3. Laravel memvalidasi SKU, lot, lokasi, dan jumlah.
+4. Laravel menyimpan transaksi receipt dan memperbarui saldo secara atomik.
+5. Audit log dibuat.
+6. Dashboard menampilkan stok terbaru.
+
+12.2 Perpindahan
+1. Operator scan lokasi asal dan barang/lot.
+2. Operator scan lokasi tujuan dan memasukkan jumlah.
+3. Laravel memeriksa stok di lokasi asal dan kapasitas tujuan.
+4. Laravel menyimpan transfer serta mengubah saldo secara atomik.
+5. Audit mencatat lokasi lama dan baru.
+
+12.3 Pengeluaran FIFO
+1. Operator mencari/scan barang.
+2. Sistem menyajikan lot yang direkomendasikan berdasarkan FIFO.
+3. Operator memeriksa kondisi dan mengonfirmasi lot.
+4. Laravel memvalidasi saldo dan menyimpan issue.
+5. Saldo lot/lokasi diperbarui dan audit dicatat.
+
+12.4 Stock opname
+1. Manajer/operator membuat sesi.
+2. Operator menghitung dengan scan atau input manual.
+3. Sistem membandingkan hitungan fisik dengan saldo.
+4. Jika ada selisih, sistem membuat kasus pemeriksaan.
+5. Operator dapat menghitung ulang.
+6. Manajer menyetujui/menolak penyesuaian.
+7. Laravel menerapkan perubahan setelah persetujuan dan mencatat audit.
+
+12.5 AI Agent
+1. Laravel mengambil data relevan dan mengirim payload minimum ke Flask.
+2. Flask menjalankan analisis.
+3. Flask mengembalikan temuan dengan alasan dan evidence.
+4. Laravel memvalidasi schema dan menyimpan ai_findings.
+5. Dashboard menampilkan rekomendasi.
+6. Pengguna meninjau dan memilih tindak lanjut.
+7. Tindakan mutasi dilakukan melalui endpoint transaksi Laravel yang
+   sesuai role dan persetujuan.
+8. Audit log menyimpan keputusan.
+
+======================================================================
+13. FRONTEND STRUCTURE YANG DISARANKAN
+======================================================================
+
+Contoh struktur React:
+
+src/
+  app/
+    App.jsx
+    router.jsx
+    providers/
+  components/
+    layout/
+    ui/
+    forms/
+    tables/
+    scanner/
+  features/
+    auth/
+    dashboard/
+    inventory/
+    transactions/
+    locations/
+    stocktake/
+    capacity/
+    fifo/
+    ai-findings/
+    reports/
+    users/
+    settings/
+  services/
+    apiClient.js
+    authService.js
+  hooks/
+  utils/
+  styles/
+  main.jsx
+
+Pedoman:
+- Pisahkan komponen UI, halaman, dan pemanggilan API.
+- Gunakan route guard untuk pengalaman pengguna, tetapi otorisasi final
+  tetap dilakukan Laravel.
+- Tampilkan loading, empty state, error, dan konfirmasi mutasi.
+- Buat layout mobile/tablet yang mudah digunakan di gudang.
+- Sediakan input kode manual jika kamera/barcode gagal.
+- Jangan menyimpan data stok sebagai sumber kebenaran permanen di state
+  browser; ambil data terbaru dari API.
+
+======================================================================
+14. STRUKTUR BACKEND YANG DISARANKAN
+======================================================================
+
+Laravel (contoh pembagian):
+- app/Http/Controllers/Api/V1/
+- app/Http/Requests/
+- app/Http/Resources/
+- app/Models/
+- app/Policies/
+- app/Services/Inventory/
+- app/Services/Stocktake/
+- app/Services/AI/
+- app/Jobs/
+- app/Events/
+- app/Listeners/
+- database/migrations/
+- database/seeders/
+- routes/api.php
+
+Python Flask (contoh pembagian):
+- app/
+  - __init__.py
+  - routes/
+  - schemas/
+  - agents/
+    - stock_accuracy.py
+    - slotting.py
+    - capacity.py
+    - aging_fifo.py
+  - rules/
+  - services/
+  - tests/
+- wsgi.py
+- requirements.txt
+
+Laravel harus memanggil service Python melalui client internal dengan
+timeout dan penanganan kegagalan. Jika AI service sedang tidak tersedia,
+transaksi inti gudang tetap berjalan; analisis dapat dijadwalkan ulang.
+
+======================================================================
+15. MVP DAN TAHAP IMPLEMENTASI
+======================================================================
+
+FASE 1 — Fondasi
+- Setup React/Vite/Tailwind.
+- Setup Laravel REST API.
+- Setup PostgreSQL dan migration.
+- Login dan RBAC.
+- Master barang, vendor, gudang, zona, rak, slot.
+- Audit dasar.
+
+FASE 2 — MVP Gudang
+- Penerimaan, pengeluaran, perpindahan.
+- Scan QR/barcode dan input manual.
+- Inventaris dan peta lokasi.
+- Stock opname.
+- Stock Accuracy Agent berbasis aturan.
+- Dashboard dan laporan dasar.
+
+FASE 3 — Agent Optimasi
+- Slotting & Location Optimization.
+- Capacity & Overstock Detection.
+- Aging & FIFO.
+- Halaman rekomendasi dan workflow review.
+
+FASE 4 — Uji dan Evaluasi
+- Uji coba pada satu zona gudang.
+- Verifikasi konsistensi stok dan alur operator.
+- Ukur KPI sebelum/sesudah.
+- Perbaiki aturan dan UX.
+- Perluas ke zona lain setelah evaluasi.
+
+======================================================================
+16. KPI / INDIKATOR KEBERHASILAN
+======================================================================
+
+KPI awal; target angka final ditentukan setelah baseline tersedia:
+- Akurasi inventaris = item/lokasi cocok dibagi item/lokasi diperiksa.
+- Waktu rata-rata mencari barang.
+- Persentase transaksi dengan lokasi lengkap.
+- Persentase zona melewati ambang kapasitas.
+- Jumlah stok melewati batas umur.
+- Persentase rekomendasi AI diterima setelah verifikasi.
+- Waktu penyelesaian kasus selisih stok.
+
+======================================================================
+17. RISIKO DAN MITIGASI
+======================================================================
+
+- Barcode rusak: input manual dan cetak ulang label.
+- Lokasi tidak disiplin: wajib scan asal dan tujuan.
+- Rekomendasi AI keliru: tampilkan alasan dan verifikasi manusia.
+- Transaksi bersamaan: database transaction, locking, dan validasi saldo.
+- Data awal tidak bersih: pemetaan lokasi dan stock opname awal.
+- Koneksi tidak stabil: transaksi offline sebagai fase lanjutan, dengan
+  mekanisme sinkronisasi dan resolusi konflik yang aman.
+- API eksternal gagal: fitur inti tetap berjalan tanpa API eksternal.
+- Satuan kapasitas berbeda: wajib memilih satuan konsisten per konteks.
+
+======================================================================
+18. BATASAN VERSI AWAL
+======================================================================
+
+- Tidak mengelola proses produksi, curing, atau antrean mesin.
+- Tidak melakukan pemesanan vendor atau pembatalan PO otomatis.
+- Tidak mengubah stok berdasarkan prediksi AI tanpa verifikasi.
+- Tidak menjamin deteksi kerusakan visual otomatis pada MVP.
+- Tidak menjadikan API dari public-apis sebagai ketergantungan utama.
+- Fokus pada inventaris, lokasi, kapasitas, umur stok, dan alur gudang.
+
+======================================================================
+19. ACCEPTANCE CRITERIA
+======================================================================
+
+Aplikasi MVP dianggap memenuhi spesifikasi jika:
+1. Pengguna dapat login dan hanya mengakses fungsi sesuai role.
+2. Admin dapat mengelola master barang dan hierarki lokasi.
+3. Operator dapat mencatat receipt, issue, dan transfer.
+4. Sistem menolak transaksi dengan jumlah tidak valid atau saldo negatif.
+5. Request transaksi yang dikirim ulang tidak menggandakan saldo.
+6. Setiap transaksi mencatat pelaksana, waktu, dan referensi.
+7. Stock opname membandingkan saldo dan hitungan fisik.
+8. Selisih stok tidak diterapkan sebelum persetujuan berwenang.
+9. Stock Accuracy Agent menampilkan temuan beserta alasan/data pemicu.
+10. Rekomendasi AI tidak mengubah stok secara langsung.
+11. Sistem dapat menampilkan lokasi, kapasitas, dan umur lot.
+12. Fitur inti tetap berjalan ketika Python/API eksternal tidak tersedia;
+    analisis dapat gagal dengan pesan yang jelas dan dicoba kembali.
+13. Audit log dapat ditelusuri oleh role yang berwenang.
+14. UI dapat digunakan pada desktop dan tablet, serta menyediakan input
+    manual jika scanner tidak tersedia.
+
+======================================================================
+20. OUTPUT YANG DIMINTA DARI AI CODING ASSISTANT
+======================================================================
+
+Kerjakan dengan urutan:
+1. Jelaskan rencana implementasi singkat.
+2. Buat struktur folder frontend, backend Laravel, Python service,
+   dan database/migration.
+3. Implementasikan schema/migration dan seed data demo.
+4. Implementasikan autentikasi dan RBAC.
+5. Implementasikan transaksi stok dengan kontrol konsistensi.
+6. Implementasikan halaman React sesuai struktur web.
+7. Implementasikan Stock Accuracy Agent terlebih dahulu.
+8. Tambahkan agent lainnya pada fase berikutnya.
+9. Buat file .env.example tanpa secret asli.
+10. Buat README berisi cara setup, menjalankan, migration, seed,
+    testing, dan konfigurasi service.
+11. Buat pengujian minimal untuk role, transaksi, stok negatif,
+    idempotency, stock opname, approval, dan output Agent.
+12. Jangan menyatakan fitur atau integrasi eksternal selesai jika belum
+    benar-benar diimplementasikan dan diuji.
+
+Akhir PRD.

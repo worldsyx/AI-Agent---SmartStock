@@ -1,0 +1,1346 @@
+PRD REVISI — SMART WAREHOUSE KARTON
+Versi: 3.0 (Revisi Role Manager & Operator, AI Assistant, QR, dan Mobile UX)
+Tanggal: 30 Oktober 2026
+Status: Spesifikasi revisi untuk AI Coding Assistant
+
+======================================================================
+0. INSTRUKSI UTAMA UNTUK AI CODING ASSISTANT
+======================================================================
+
+Bangun dan revisi aplikasi Smart Warehouse – Karton berdasarkan PRD ini.
+Dokumen ini merupakan revisi dari PRD Teknis Smart Warehouse Karton
+Versi 2.0. Pertahankan stack dan prinsip arsitektur yang sudah ditetapkan.
+
+STACK WAJIB:
+- Frontend: React.js + Vite.
+- Styling: Tailwind CSS.
+- Backend utama: Laravel REST API.
+- Database: PostgreSQL.
+- AI/Data Service: Python Flask.
+- Komunikasi frontend-backend: HTTPS REST API/JSON.
+
+ATURAN WAJIB:
+1. Fokus aplikasi hanya pada aktivitas pergudangan karton dan paper roll.
+   Jangan menambahkan fitur proses produksi, curing, atau antrean mesin.
+2. Hilangkan tab/menu Admin dari navigasi aplikasi sehari-hari.
+3. Pisahkan pengalaman dan halaman Manager dengan Operator berdasarkan
+   role setelah login.
+4. Pertahankan role Admin sebagai role teknis/backend untuk kebutuhan
+   pengelolaan akun, role, master data, konfigurasi, dan pemeliharaan.
+   Admin tidak ditampilkan sebagai tab utama dan tidak dicampur dengan
+   dashboard Manager atau Operator.
+5. Halaman Settings hanya boleh ada satu. Jangan membuat halaman Settings
+   duplikat atau route/komponen Settings kedua. Konten di dalamnya berubah
+   sesuai hak akses role.
+6. AI memberikan analisis, peringatan, dan rekomendasi. AI tidak boleh
+   mengubah saldo stok, membuat pembelian, atau memindahkan barang secara
+   otomatis.
+7. Semua transaksi stok harus divalidasi Laravel, dilakukan secara atomik,
+   dan dicatat dalam audit log.
+8. Manager mengatur preferensi dan perilaku AI melalui AI Chat sesuai
+   batas konfigurasi yang diizinkan. Chat AI tidak boleh menjadi jalur
+   untuk melewati RBAC atau aturan persetujuan.
+9. Operator hanya dapat melakukan aktivitas operasional sesuai izin.
+   Operator tidak dapat mengubah konfigurasi global AI atau menyetujui
+   penyesuaian stok yang memerlukan otorisasi Manager.
+10. Gunakan data yang benar-benar tersedia. Jangan mengarang hasil AI,
+    data stok, tanggal kedaluwarsa, vendor, atau integrasi API.
+11. Jika data yang diperlukan belum tersedia, tampilkan status data belum
+    lengkap dan jelaskan data apa yang perlu dicatat.
+12. Implementasikan bertahap. Jangan menganggap seluruh fitur AI telah
+    selesai hanya karena UI chat atau kartu rekomendasi sudah dibuat.
+13. Nilai ambang, batas umur stok, aturan minimum stok, dan parameter
+    rekomendasi harus dapat dikonfigurasi oleh role berwenang.
+14. Pertahankan histori transaksi. Jangan menyediakan penghapusan biasa
+    untuk transaksi stok yang sudah diposting.
+
+======================================================================
+1. RINGKASAN PRODUK
+======================================================================
+
+Smart Warehouse – Karton adalah aplikasi pengelolaan inventaris gudang
+untuk barang karton dan paper roll. Aplikasi mencatat barang masuk,
+barang keluar, perpindahan lokasi, jumlah stok, lot, serta lokasi
+penyimpanan. Sistem juga membantu pengguna memantau kondisi persediaan
+dan menemukan barang dengan lebih cepat.
+
+Aplikasi memiliki dua pengalaman pengguna utama:
+
+A. Manager Dashboard
+   Berfokus pada pemantauan gudang, laporan harian, pengambilan keputusan,
+   rekomendasi AI, pengaturan preferensi AI, dan tindak lanjut.
+
+B. Operator Workspace
+   Berfokus pada pekerjaan lapangan: scan QR, mencatat barang masuk dan
+   keluar, memeriksa stok, mencatat lokasi, serta mengikuti rekomendasi
+   penempatan barang.
+
+Role Admin tetap tersedia untuk fungsi teknis dan administrasi, tetapi
+tidak menjadi tab navigasi utama aplikasi.
+
+Tujuan revisi:
+- Membuat alur Manager dan Operator lebih jelas dan tidak bercampur.
+- Mempermudah Manager menggunakan fitur AI dari dashboard.
+- Menyediakan ringkasan pencatatan barang masuk/keluar setiap pagi.
+- Memberikan saran pembelian stok berdasarkan data.
+- Memberikan peringatan stok yang perlu diperiksa karena lama disimpan,
+  mendekati tanggal kedaluwarsa jika atribut tanggal tersebut memang
+  digunakan, atau berisiko rusak.
+- Menyediakan AI Chat untuk Manager mengatur preferensi AI.
+- Mempermudah Operator mencatat transaksi dan lokasi menggunakan QR.
+- Mengoptimalkan seluruh halaman Operator untuk HP.
+
+======================================================================
+2. ROLE DAN PEMISAHAN AKSES
+======================================================================
+
+2.1 Manager
+
+Manager adalah pengguna yang mengawasi aktivitas gudang dan mengambil
+keputusan operasional.
+
+Hak akses:
+- Membuka Manager Dashboard.
+- Melihat ringkasan stok, barang masuk, barang keluar, dan perpindahan.
+- Melihat laporan harian, termasuk laporan pagi.
+- Melihat rekomendasi pembelian stok.
+- Melihat peringatan stok lama, mendekati kedaluwarsa (jika tanggal
+  kedaluwarsa relevan dan tersedia), dan pemeriksaan kondisi barang.
+- Meninjau rekomendasi lokasi dari AI.
+- Meninjau temuan selisih stok.
+- Menyetujui atau menolak penyesuaian stok sesuai kebijakan.
+- Meninjau dan menyetujui relokasi sesuai kewenangan.
+- Menggunakan AI Chat untuk mengatur preferensi AI.
+- Mengatur parameter yang memang diberikan kepada Manager, misalnya
+  ambang minimum stok, batas umur stok, prioritas rekomendasi, dan
+  preferensi notifikasi.
+- Melihat laporan dan audit sesuai izin.
+- Membuka satu halaman Settings dengan konten khusus Manager.
+
+Manager tidak boleh:
+- Mengubah histori transaksi yang telah diposting tanpa mekanisme koreksi.
+- Memerintahkan AI mengubah saldo stok secara langsung.
+- Memerintahkan AI melakukan pembelian atau relokasi otomatis.
+- Mengubah konfigurasi teknis rahasia seperti kredensial database,
+  API key, atau environment server melalui AI Chat.
+
+2.2 Operator
+
+Operator adalah pengguna yang melakukan pencatatan dan aktivitas fisik
+di gudang.
+
+Hak akses:
+- Membuka Operator Workspace yang mobile-first.
+- Melihat daftar barang dan jumlah stok sesuai izin.
+- Mencatat barang masuk.
+- Mencatat barang keluar.
+- Mencatat perpindahan barang jika diizinkan.
+- Scan QR barang, lot, dan lokasi.
+- Input kode manual jika kamera atau QR tidak dapat digunakan.
+- Mencatat lokasi penyimpanan setiap stok/lot.
+- Melihat lokasi barang dan petunjuk pencarian.
+- Melihat saran penempatan stok dari AI.
+- Mengonfirmasi lokasi aktual setelah barang ditempatkan.
+- Melakukan penghitungan stok/stock opname jika ditugaskan.
+- Melihat riwayat transaksi yang dibuatnya sesuai izin.
+- Membuka satu halaman Settings dengan pilihan terbatas, misalnya
+  profil, preferensi tampilan, dan pengaturan perangkat.
+
+Operator tidak boleh:
+- Mengubah aturan global atau konfigurasi AI Manager.
+- Mengubah ambang minimum stok global.
+- Menyetujui penyesuaian stok yang membutuhkan Manager.
+- Menghapus transaksi.
+- Mengakses pengelolaan akun, role, konfigurasi server, atau audit
+  administratif yang tidak diizinkan.
+
+2.3 Admin (role teknis, bukan tab utama)
+
+Admin tetap ada untuk menjaga kemampuan administrasi aplikasi.
+
+Hak akses Admin dapat mencakup:
+- Mengelola akun pengguna dan role.
+- Mengelola master barang, vendor, gudang, zona, rak, dan slot.
+- Mengelola konfigurasi teknis aplikasi.
+- Mengelola integrasi dan parameter sistem.
+- Melihat audit log administratif.
+- Mengelola konfigurasi yang tidak tersedia untuk Manager.
+
+Ketentuan:
+- Tidak menampilkan menu Admin sebagai tab utama pada navigasi Manager
+  maupun Operator.
+- Halaman administrasi hanya tersedia melalui route terlindungi dan
+  hanya untuk Admin.
+- Jangan menghapus kemampuan backend Admin yang masih dibutuhkan.
+
+2.4 RBAC dan route
+
+Setelah login:
+- Role Manager diarahkan ke /manager/dashboard.
+- Role Operator diarahkan ke /operator/home.
+- Role Admin diarahkan ke area administrasi khusus yang tidak menjadi
+  bagian navigasi utama pengguna operasional.
+
+Frontend menggunakan route guard untuk pengalaman pengguna.
+Laravel tetap wajib memeriksa role dan permission pada setiap endpoint.
+Menyembunyikan tombol di frontend bukan pengamanan yang cukup.
+
+======================================================================
+3. STRUKTUR NAVIGASI DAN HALAMAN
+======================================================================
+
+3.1 Navigasi Manager
+
+Menu yang disarankan:
+1. Dashboard
+2. Laporan
+3. Rekomendasi AI
+4. AI Chat
+5. Inventaris
+6. Lokasi Gudang
+7. Transaksi
+8. Stock Opname
+9. Settings
+
+Menu dapat disederhanakan menjadi sidebar pada desktop dan navigasi
+ringkas pada tablet/mobile. Jangan menampilkan menu Admin.
+
+3.2 Navigasi Operator
+
+Menu utama yang disarankan:
+1. Beranda
+2. Scan QR
+3. Barang Masuk
+4. Barang Keluar
+5. Lokasi Stok
+6. Riwayat Saya
+7. Settings
+
+Pada layar HP, gunakan bottom navigation atau pola navigasi mobile
+yang mudah dijangkau ibu jari. Aksi Scan QR dan pencatatan transaksi
+harus mudah ditemukan.
+
+3.3 Satu halaman Settings
+
+Wajib hanya ada satu implementasi halaman Settings dan satu route
+utama, misalnya /settings.
+
+Konten ditampilkan berdasarkan role:
+- Manager: preferensi AI, ambang stok, aturan umur stok, notifikasi,
+  preferensi laporan, profil, dan keamanan akun sesuai izin.
+- Operator: profil, preferensi tampilan, pengaturan kamera/scan,
+  dan keamanan akun.
+- Admin: konfigurasi aplikasi dan administrasi teknis sesuai izin.
+
+Jangan membuat /manager/settings dan /operator/settings sebagai dua
+halaman duplikat. Jika route alias diperlukan, arahkan keduanya ke
+komponen Settings yang sama dan gunakan role untuk menentukan konten.
+
+======================================================================
+4. MANAGER DASHBOARD
+======================================================================
+
+4.1 Tujuan
+
+Dashboard Manager harus memberikan gambaran kondisi gudang dan
+membantu Manager menentukan tindakan yang perlu dilakukan.
+
+4.2 Ringkasan utama
+
+Tampilkan kartu ringkasan:
+- Total jenis barang/SKU.
+- Total jumlah stok (dengan satuan yang jelas).
+- Barang masuk hari ini.
+- Barang keluar hari ini.
+- Perpindahan barang hari ini.
+- Stok di bawah batas minimum.
+- Stok lama atau perlu pemeriksaan.
+- Temuan selisih stok yang belum selesai.
+- Kapasitas gudang/zona jika data kapasitas tersedia.
+
+Setiap angka harus berasal dari database dan dapat ditelusuri ke detail
+atau daftar terkait. Jangan menampilkan angka demo sebagai data nyata.
+
+4.3 Laporan pencatatan setiap pagi
+
+Sediakan ringkasan laporan harian yang dapat dibuka Manager setiap pagi.
+
+Isi laporan:
+- Tanggal dan rentang waktu laporan.
+- Total transaksi barang masuk.
+- Total kuantitas barang masuk per SKU/kategori.
+- Total transaksi barang keluar.
+- Total kuantitas barang keluar per SKU/kategori.
+- Perpindahan lokasi yang terjadi.
+- Stok akhir berdasarkan data transaksi yang tercatat.
+- Transaksi yang gagal, tertunda, atau memerlukan verifikasi jika ada.
+- Catatan selisih atau anomali yang perlu diperiksa.
+- Waktu terakhir data diperbarui.
+
+Aturan laporan:
+- Gunakan zona waktu gudang yang dikonfigurasi.
+- Secara default laporan pagi merangkum aktivitas hari kalender
+  sebelumnya, tetapi rentang waktunya harus dapat dikonfigurasi.
+- Tampilkan label "Belum ada transaksi" jika memang tidak ada transaksi.
+- Tampilkan label "Data belum lengkap" jika ada sumber data yang belum
+  tersedia.
+- Jangan menyamakan transaksi yang belum disetujui dengan transaksi
+  final.
+- Sediakan filter tanggal dan ekspor PDF/CSV/Excel jika implementasi
+  ekspor tersedia.
+- Laporan harus dapat ditelusuri ke detail transaksi.
+
+4.4 Pusat perhatian Manager
+
+Bagian prioritas pada dashboard:
+1. Perlu tindakan segera.
+2. Stok di bawah minimum.
+3. Stok lama/perlu pemeriksaan.
+4. Rekomendasi pembelian.
+5. Rekomendasi lokasi/penataan.
+6. Selisih stok.
+7. Ringkasan aktivitas harian.
+
+Gunakan prioritas yang jelas, alasan singkat, dan tombol menuju detail.
+Hindari menampilkan terlalu banyak kartu yang tidak membantu keputusan.
+
+======================================================================
+5. FITUR AI UNTUK MANAGER
+======================================================================
+
+5.1 Prinsip umum AI
+
+AI harus membantu Manager memahami data gudang dan menentukan tindakan.
+Setiap rekomendasi harus menyertakan:
+- Judul temuan.
+- Prioritas.
+- Barang/SKU/lot/lokasi terkait.
+- Data yang menjadi dasar.
+- Alasan rekomendasi.
+- Saran tindakan.
+- Tingkat keyakinan atau status kelengkapan data jika memang dapat
+  dihitung secara bertanggung jawab.
+- Waktu analisis terakhir.
+- Status tindak lanjut.
+
+AI tidak boleh mengarang data atau menyatakan rekomendasi sebagai
+keputusan final.
+
+5.2 Rekomendasi pembelian stok
+
+Tujuan:
+Membantu Manager mengetahui barang yang perlu dipertimbangkan untuk
+dibeli atau dipesan kembali.
+
+Data masukan:
+- Stok tersedia saat ini.
+- Batas minimum stok yang ditetapkan.
+- Riwayat barang keluar.
+- Rata-rata pemakaian/keluar jika data historis cukup.
+- Barang masuk yang sedang dalam perjalanan atau PO, jika data tersebut
+  memang dicatat oleh sistem.
+- Lead time pemasok jika tersedia.
+- Satuan dan aturan pembelian jika tersedia.
+
+Logika tahap awal:
+- Tandai barang yang stoknya berada di bawah batas minimum.
+- Hitung tren pemakaian dari histori transaksi yang tersedia.
+- Perkirakan risiko kehabisan stok hanya jika data historis mencukupi.
+- Tampilkan saran jumlah pembelian sebagai estimasi, bukan perintah.
+- Jika data lead time, PO, atau histori tidak tersedia, tampilkan
+  keterbatasan tersebut.
+
+Informasi yang ditampilkan:
+- Nama dan SKU barang.
+- Stok saat ini.
+- Batas minimum.
+- Rata-rata barang keluar per periode jika dapat dihitung.
+- Status stok.
+- Estimasi kebutuhan atau jumlah yang disarankan jika didukung data.
+- Alasan rekomendasi.
+- Data yang belum tersedia.
+- Tombol "Tinjau" atau "Tandai sudah ditinjau".
+
+Batasan:
+- AI tidak membuat PO.
+- AI tidak menghubungi vendor.
+- AI tidak melakukan pembelian otomatis.
+- Keputusan pembelian tetap dilakukan Manager melalui proses bisnis
+  perusahaan di luar atau di dalam modul yang berwenang.
+
+5.3 Peringatan stok lama, kedaluwarsa, dan pemeriksaan kondisi
+
+Catatan penting:
+Karton dan paper roll tidak selalu memiliki tanggal kedaluwarsa formal.
+Karena itu, jangan mewajibkan tanggal kedaluwarsa untuk semua barang.
+Sistem harus membedakan:
+- Stok berumur lama berdasarkan tanggal penerimaan.
+- Barang dengan tanggal kedaluwarsa jika atribut tersebut relevan.
+- Barang yang perlu diperiksa kondisi fisiknya.
+- Barang yang melewati batas umur penyimpanan yang dikonfigurasi.
+
+Data masukan:
+- Tanggal barang diterima.
+- ID lot/tumpukan.
+- Lokasi penyimpanan.
+- Batas umur stok dari konfigurasi.
+- Tanggal kedaluwarsa opsional.
+- Catatan kondisi: lembap, sobek, penyok, kemasan rusak, atau kondisi
+  lain yang didefinisikan perusahaan.
+
+Fitur:
+- Daftar stok tertua.
+- Peringatan stok mendekati/melewati batas umur.
+- Peringatan tanggal kedaluwarsa jika ada.
+- Saran pemeriksaan fisik.
+- Rekomendasi FIFO.
+- Filter berdasarkan zona, SKU, lot, umur, dan status pemeriksaan.
+
+Jangan menyebut barang "kedaluwarsa" jika tidak ada tanggal kedaluwarsa
+yang valid. Gunakan istilah "stok lama/perlu pemeriksaan" untuk kasus
+berdasarkan umur penyimpanan.
+
+5.4 Rekomendasi penempatan stok
+
+Manager dapat melihat rekomendasi dari Slotting & Location Optimization
+Agent, termasuk:
+- Barang yang sering keluar dan sebaiknya berada di lokasi yang mudah
+  dijangkau.
+- Lokasi yang tersedia dan kapasitasnya.
+- Pertimbangan kesesuaian lokasi dengan karakteristik barang.
+- Alasan lokasi yang direkomendasikan.
+- Lokasi asal dan tujuan jika rekomendasi berupa relokasi.
+
+Manager dapat menyetujui, menolak, atau meminta pemeriksaan. Persetujuan
+tidak otomatis memindahkan barang. Operator tetap melakukan perpindahan
+fisik dan mencatat hasilnya.
+
+5.5 AI Chat untuk Manager
+
+Tujuan:
+Menyediakan percakapan AI agar Manager dapat bertanya tentang kondisi
+gudang dan mengatur preferensi analisis AI tanpa harus mencari banyak
+menu konfigurasi.
+
+Kemampuan:
+A. Tanya jawab berbasis data gudang:
+   - "Barang apa yang stoknya di bawah minimum?"
+   - "Barang apa yang paling lama tersimpan?"
+   - "Apa ringkasan barang masuk dan keluar kemarin?"
+   - "Lokasi mana yang kapasitasnya hampir penuh?"
+   - "Apa rekomendasi pembelian yang perlu saya tinjau?"
+
+B. Pengaturan preferensi AI:
+   - Mengubah ambang minimum stok jika Manager memiliki izin.
+   - Mengubah batas umur stok.
+   - Mengatur prioritas notifikasi.
+   - Memilih kategori rekomendasi yang ditampilkan.
+   - Mengatur preferensi ringkasan laporan.
+
+C. Penjelasan rekomendasi:
+   - Menjelaskan alasan suatu rekomendasi muncul.
+   - Menjelaskan data yang digunakan.
+   - Menjelaskan data yang belum tersedia.
+   - Membandingkan tren periode jika data mendukung.
+
+Alur pengaturan:
+1. Manager menyampaikan perubahan melalui chat.
+2. AI mengidentifikasi parameter yang ingin diubah.
+3. Sistem menampilkan ringkasan nilai lama dan nilai baru.
+4. Manager diminta mengonfirmasi perubahan.
+5. Laravel memeriksa role, permission, dan validasi nilai.
+6. Jika valid dan dikonfirmasi, Laravel menyimpan konfigurasi.
+7. Audit log mencatat pengguna, waktu, nilai sebelum/sesudah, dan alasan.
+8. AI mengonfirmasi berdasarkan hasil backend.
+
+Ketentuan keamanan:
+- AI Chat tidak boleh langsung menjalankan SQL bebas.
+- AI Chat tidak boleh mengubah stok atau transaksi.
+- AI Chat tidak boleh melewati endpoint dan permission Laravel.
+- Perubahan konfigurasi sensitif memerlukan konfirmasi eksplisit.
+- Jika Manager tidak memiliki izin, AI menjelaskan bahwa perubahan
+  memerlukan Admin.
+- Percakapan tidak boleh mengungkap data di luar hak akses Manager.
+
+5.6 Status rekomendasi AI
+
+Gunakan status konsisten:
+- Baru.
+- Ditinjau.
+- Disetujui.
+- Ditolak.
+- Menunggu tindakan operator.
+- Selesai.
+- Tidak berlaku.
+
+Simpan siapa yang meninjau, kapan, keputusan, dan catatan tindak lanjut.
+
+======================================================================
+6. OPERATOR WORKSPACE — MOBILE FIRST
+======================================================================
+
+6.1 Prinsip desain
+
+Halaman Operator harus dirancang dengan pendekatan mobile-first karena
+digunakan saat bekerja di area gudang.
+
+Ketentuan UI:
+- Prioritaskan layar HP, lalu sesuaikan ke tablet dan desktop.
+- Tombol utama besar dan mudah disentuh.
+- Form singkat dan tidak terlalu banyak kolom dalam satu layar.
+- Gunakan label yang jelas, bukan ikon tanpa keterangan.
+- Hindari tabel lebar; gunakan kartu/list pada layar kecil.
+- Gunakan bottom navigation untuk menu utama jika sesuai.
+- Tombol Scan QR mudah dijangkau.
+- Tampilkan status sukses/gagal dengan jelas.
+- Berikan loading state dan cegah submit berulang.
+- Sediakan input manual sebagai alternatif kamera.
+- Pastikan kontras teks dan ukuran font nyaman dibaca.
+- Pertahankan aksesibilitas keyboard dan screen reader jika memungkinkan.
+
+6.2 Beranda Operator
+
+Tampilkan:
+- Sapaan dan identitas operator.
+- Tanggal dan waktu.
+- Tombol cepat Barang Masuk.
+- Tombol cepat Barang Keluar.
+- Tombol Scan QR.
+- Tugas atau pemeriksaan yang perlu diselesaikan.
+- Ringkasan transaksi operator hari ini.
+- Rekomendasi lokasi/penempatan yang relevan.
+- Notifikasi kesalahan input atau transaksi tertunda.
+
+Jangan memenuhi beranda dengan grafik analitik Manager.
+
+6.3 Pencatatan barang masuk
+
+Alur:
+1. Operator membuka Barang Masuk.
+2. Scan QR barang atau cari SKU secara manual.
+3. Sistem menampilkan identitas barang.
+4. Operator memilih/memasukkan lot atau membuat lot baru sesuai izin.
+5. Operator memasukkan jumlah dan satuan.
+6. Operator memilih atau scan lokasi tujuan.
+7. Sistem menampilkan ringkasan sebelum dikirim.
+8. Operator mengonfirmasi.
+9. Laravel memvalidasi data dan menyimpan transaksi secara atomik.
+10. Sistem menampilkan nomor transaksi dan status berhasil.
+11. Audit log menyimpan pelaksana, waktu, dan detail transaksi.
+
+Validasi:
+- SKU harus terdaftar dan aktif.
+- Jumlah harus lebih besar dari nol.
+- Satuan harus sesuai master barang.
+- Lokasi harus aktif dan sesuai aturan penyimpanan.
+- Lot dan tanggal penerimaan harus tercatat.
+- Request berulang tidak boleh menggandakan barang masuk.
+
+6.4 Pencatatan barang keluar
+
+Alur:
+1. Operator membuka Barang Keluar.
+2. Scan QR barang atau cari SKU.
+3. Sistem menampilkan stok yang tersedia per lokasi dan lot.
+4. Sistem dapat menyarankan lot FIFO.
+5. Operator memilih lot dan lokasi pengambilan.
+6. Operator memasukkan jumlah.
+7. Sistem memvalidasi stok tersedia.
+8. Operator memeriksa ringkasan dan mengonfirmasi.
+9. Laravel menyimpan transaksi dan memperbarui saldo secara atomik.
+10. Sistem menampilkan bukti transaksi.
+
+Validasi:
+- Jumlah harus lebih besar dari nol.
+- Stok tidak boleh menjadi negatif.
+- Lot dan lokasi harus cocok dengan saldo.
+- Lot FIFO yang disarankan tidak dipaksakan jika ada alasan pengecualian
+  yang sah; pengecualian dicatat.
+- Transaksi ganda harus dicegah.
+
+6.5 Scan QR Code
+
+Tujuan:
+Mempercepat identifikasi barang, lot, dan lokasi.
+
+QR dapat digunakan untuk:
+- SKU/barang.
+- Lot/tumpukan.
+- Lokasi gudang, zona, rak, atau slot.
+
+Alur scan:
+1. Operator membuka fitur Scan QR.
+2. Browser meminta izin kamera.
+3. Sistem membaca QR.
+4. Sistem memvalidasi jenis dan identitas kode melalui Laravel.
+5. Sistem menampilkan detail objek yang ditemukan.
+6. Operator memilih tindakan yang tersedia: lihat stok, barang masuk,
+   barang keluar, atau catat perpindahan.
+7. Operator memeriksa data sebelum transaksi disimpan.
+
+Ketentuan:
+- QR menyimpan ID/kode referensi, bukan data rahasia atau saldo stok.
+- Jangan mempercayai isi QR tanpa validasi backend.
+- Sediakan pencarian/input kode manual.
+- Berikan pesan jika QR tidak dikenal, rusak, atau tidak aktif.
+- Cegah scan yang sama memicu transaksi berulang.
+- Sediakan fungsi cetak/unduh label QR jika fitur tersebut diizinkan
+  dan benar-benar diimplementasikan.
+
+6.6 Pencatatan lokasi setiap stok
+
+Setiap saldo stok harus dapat ditelusuri ke lokasi penyimpanan.
+
+Struktur lokasi:
+Gudang > Zona > Rak > Slot.
+
+Data yang dicatat:
+- SKU/barang.
+- Lot/tumpukan.
+- Lokasi saat ini.
+- Jumlah pada lokasi tersebut.
+- Tanggal masuk atau tanggal penempatan.
+- Riwayat lokasi sebelumnya.
+- Operator yang mencatat perpindahan.
+
+Alur penempatan:
+1. Operator scan QR barang/lot.
+2. Operator scan QR lokasi tujuan.
+3. Sistem memeriksa kesesuaian lokasi dan kapasitas.
+4. Operator memasukkan jumlah yang ditempatkan.
+5. Sistem menampilkan ringkasan lokasi asal dan tujuan.
+6. Operator mengonfirmasi.
+7. Laravel memvalidasi dan menyimpan transfer.
+8. Lokasi dan histori diperbarui.
+9. Audit log mencatat perubahan.
+
+Barang tidak boleh hanya memiliki lokasi bebas dalam bentuk teks jika
+sistem sudah menggunakan master lokasi. Gunakan ID lokasi terstruktur.
+
+6.7 Saran penempatan stok oleh AI
+
+Tujuan:
+Membantu Operator memilih lokasi penyimpanan yang memudahkan pencarian
+dan pengambilan barang di kemudian hari.
+
+Data masukan:
+- Jenis/SKU barang.
+- Lokasi yang tersedia.
+- Kapasitas lokasi.
+- Frekuensi barang keluar.
+- Histori perpindahan.
+- Aturan kompatibilitas lokasi jika sudah didefinisikan.
+- Kondisi barang jika relevan.
+
+Logika awal:
+- Prioritaskan lokasi yang tersedia dan sesuai.
+- Barang yang sering keluar dapat disarankan ke lokasi yang lebih mudah
+  dijangkau jika aturan gudang mengizinkan.
+- Jangan menyarankan lokasi penuh atau tidak sesuai.
+- Pertimbangkan pengelompokan barang sejenis jika sesuai kebijakan.
+
+Tampilan rekomendasi:
+- Lokasi yang disarankan.
+- Alasan singkat.
+- Kapasitas/ruang tersedia jika diketahui.
+- Alternatif lokasi jika ada.
+- Peringatan jika data lokasi belum lengkap.
+
+Alur:
+1. Operator memasukkan barang yang akan ditempatkan.
+2. AI memberikan satu atau beberapa saran.
+3. Operator memilih lokasi yang tersedia sesuai kewenangan.
+4. Operator scan QR lokasi aktual.
+5. Sistem memeriksa apakah lokasi aktual sesuai dengan pilihan.
+6. Operator mengonfirmasi penempatan.
+7. Laravel menyimpan lokasi aktual dan audit.
+
+AI hanya menyarankan. Operator tetap melakukan scan dan konfirmasi
+lokasi aktual. Jika Manager mewajibkan persetujuan relokasi, ikuti
+workflow persetujuan tersebut.
+
+6.8 Riwayat Operator
+
+Tampilkan:
+- Transaksi masuk yang dibuat operator.
+- Transaksi keluar yang dibuat operator.
+- Perpindahan lokasi yang dibuat operator.
+- Waktu transaksi.
+- Barang, jumlah, lot, dan lokasi.
+- Status transaksi.
+- Referensi transaksi.
+
+Operator tidak dapat menghapus histori. Koreksi dilakukan melalui
+mekanisme transaksi koreksi yang memiliki otorisasi.
+
+======================================================================
+7. MODUL INVENTARIS DAN LOKASI
+======================================================================
+
+Modul inventaris dipakai Manager dan Operator dengan tingkat detail
+sesuai izin.
+
+Fitur:
+- Daftar SKU karton dan paper roll.
+- Nama, kode SKU, kategori, spesifikasi, dan satuan.
+- Total stok.
+- Stok per lot.
+- Stok per lokasi.
+- Tanggal penerimaan.
+- Status kondisi.
+- Vendor jika tersedia dan boleh dilihat.
+- Histori masuk/keluar/perpindahan.
+- Pencarian berdasarkan SKU, nama, lot, dan lokasi.
+
+Peta lokasi:
+- Gudang > Zona > Rak > Slot.
+- Menampilkan kapasitas dan stok per lokasi.
+- Pencarian barang berdasarkan lokasi.
+- Riwayat perpindahan lokasi.
+- Status lokasi aktif/nonaktif.
+
+======================================================================
+8. LAPORAN DAN NOTIFIKASI
+======================================================================
+
+8.1 Laporan Manager
+
+Jenis laporan:
+- Ringkasan harian barang masuk dan keluar.
+- Laporan stok saat ini.
+- Laporan transaksi.
+- Laporan perpindahan.
+- Laporan stock opname dan selisih.
+- Laporan kapasitas.
+- Laporan umur stok/FIFO.
+- Laporan rekomendasi AI dan tindak lanjut.
+
+8.2 Laporan pagi
+
+Laporan pagi harus tersedia saat Manager membuka dashboard. Jika
+diperlukan, sistem dapat menghasilkan laporan terjadwal melalui Laravel
+Scheduler/Queue.
+
+Ketentuan:
+- Waktu pembuatan dapat dikonfigurasi.
+- Zona waktu mengikuti konfigurasi gudang.
+- Laporan yang sama tidak dibuat berulang tanpa alasan.
+- Catat waktu pembuatan dan rentang data.
+- Jika job gagal, tampilkan status gagal dan sediakan mekanisme retry.
+- Laporan tidak boleh memasukkan transaksi yang belum final tanpa label.
+
+8.3 Notifikasi
+
+Notifikasi Manager:
+- Stok di bawah minimum.
+- Stok lama/perlu pemeriksaan.
+- Tanggal kedaluwarsa mendekat jika relevan.
+- Kapasitas mendekati batas.
+- Selisih stok perlu persetujuan.
+- Rekomendasi AI baru.
+- Laporan pagi siap atau gagal dibuat.
+
+Notifikasi Operator:
+- Tugas pencatatan atau pemeriksaan.
+- Transaksi gagal/tertunda.
+- Lokasi tidak sesuai.
+- QR tidak dikenal.
+- Penempatan perlu konfirmasi.
+- Instruksi tindak lanjut yang ditugaskan.
+
+======================================================================
+9. STOCK OPNAME, FIFO, KAPASITAS, DAN AUDIT
+======================================================================
+
+Pertahankan modul inti dari PRD Versi 2.0:
+
+Stock opname:
+- Manager/operator membuat atau menjalankan sesi sesuai izin.
+- Operator scan dan menghitung stok fisik.
+- Sistem membandingkan hitungan fisik dengan stok sistem.
+- Selisih menjadi kasus pemeriksaan.
+- Penyesuaian saldo hanya berlaku setelah persetujuan role berwenang.
+- Catat nilai sebelum/sesudah, alasan, pelaksana, dan penyetuju.
+
+FIFO dan umur stok:
+- Gunakan tanggal penerimaan dan ID lot.
+- Tampilkan kandidat lot yang lebih dahulu masuk.
+- Catat pengecualian FIFO beserta alasannya.
+- Beri peringatan stok lama berdasarkan batas konfigurasi.
+- Jangan menyebut tanggal kedaluwarsa jika atribut tidak tersedia.
+
+Kapasitas:
+- Kapasitas dapat dicatat per zona/rak/slot.
+- Satuan kapasitas harus konsisten.
+- Tampilkan pemakaian dan ambang peringatan.
+- Jangan melakukan relokasi otomatis.
+
+Audit:
+- Catat transaksi masuk, keluar, transfer, adjustment, approval,
+  perubahan konfigurasi, dan keputusan rekomendasi AI.
+- Simpan pengguna, waktu, objek, nilai sebelum/sesudah, dan alasan.
+- Histori transaksi yang sudah diposting tidak dihapus dari UI biasa.
+
+======================================================================
+10. ARSITEKTUR TEKNIS
+======================================================================
+
+10.1 React + Vite
+
+Tanggung jawab:
+- Menampilkan UI Manager dan Operator berdasarkan role.
+- Menyediakan route guard.
+- Menampilkan form transaksi, scanner QR, laporan, dan AI Chat.
+- Menangani responsive layout.
+- Memanggil Laravel REST API.
+- Tidak mengakses PostgreSQL langsung.
+- Tidak menyimpan secret di browser.
+
+Struktur frontend yang disarankan:
+
+src/
+  app/
+    App.jsx
+    router.jsx
+    providers/
+  components/
+    layout/
+    navigation/
+    ui/
+    forms/
+    tables/
+    cards/
+    scanner/
+  features/
+    auth/
+    manager/
+      dashboard/
+      reports/
+      ai-recommendations/
+      ai-chat/
+      inventory/
+      locations/
+      transactions/
+      stocktake/
+    operator/
+      home/
+      qr-scanner/
+      receipts/
+      issues/
+      stock-locations/
+      history/
+    inventory/
+    locations/
+    settings/
+    admin/
+  services/
+    apiClient.js
+    authService.js
+  hooks/
+  utils/
+  styles/
+  main.jsx
+
+Catatan:
+- settings/ hanya satu implementasi halaman Settings.
+- manager/ dan operator/ berisi pengalaman pengguna yang berbeda.
+- admin/ hanya route terlindungi jika dibutuhkan, bukan tab utama.
+- Komponen umum dapat dipakai bersama tanpa menggandakan aturan bisnis.
+
+10.2 Laravel
+
+Laravel adalah backend utama dan sumber kebenaran sistem.
+
+Tanggung jawab:
+- Autentikasi dan RBAC.
+- Master data.
+- Transaksi inventaris.
+- Saldo dan lokasi stok.
+- Validasi QR.
+- Persetujuan.
+- Laporan dan notifikasi.
+- Konfigurasi AI yang diizinkan.
+- Penyimpanan hasil analisis AI.
+- Audit log.
+- Pemanggilan Python Flask.
+
+Struktur backend yang disarankan:
+
+app/
+  Http/Controllers/Api/V1/
+  Http/Requests/
+  Http/Resources/
+  Models/
+  Policies/
+  Services/
+    Inventory/
+    Transactions/
+    Locations/
+    Reports/
+    AI/
+    QR/
+  Jobs/
+  Events/
+  Listeners/
+database/
+  migrations/
+  seeders/
+routes/
+  api.php
+
+10.3 PostgreSQL
+
+PostgreSQL menyimpan:
+- Pengguna dan role.
+- Master barang dan vendor.
+- Gudang dan lokasi.
+- Lot dan saldo stok.
+- Transaksi.
+- QR reference.
+- Stock opname.
+- Hasil AI.
+- Konfigurasi AI.
+- Laporan harian.
+- Notifikasi.
+- Audit log.
+
+10.4 Python Flask AI Service
+
+Python Flask bertanggung jawab pada analisis:
+- Stock Accuracy & Inventory Discrepancy.
+- Warehouse Slotting & Location Optimization.
+- Warehouse Capacity & Overstock Detection.
+- Carton Inventory Aging & FIFO.
+- Reorder/Stock Purchase Recommendation.
+- Penjelasan ringkasan data untuk AI Chat jika model/layanan AI
+  benar-benar dikonfigurasi.
+
+Python tidak boleh menulis saldo stok secara langsung ke PostgreSQL.
+Laravel mengambil data minimum yang diperlukan, mengirimkannya ke Flask,
+memvalidasi hasil, lalu menyimpan hasil rekomendasi.
+
+10.5 Layanan/model AI untuk AI Chat
+
+AI Chat memerlukan model bahasa atau penyedia inferensi yang benar-benar
+dikonfigurasi. Jangan menganggap repositori public-apis/public-apis
+sebagai model AI atau endpoint inferensi.
+
+Ketentuan:
+- Buat adapter/provider layer agar penyedia AI dapat diganti.
+- Simpan API key hanya di environment backend.
+- Jika provider belum dikonfigurasi, tampilkan status AI Chat belum
+  tersedia dan tetap sediakan dashboard rekomendasi rule-based.
+- Batasi konteks AI pada data yang boleh diakses Manager.
+- Gunakan tool/function yang terdaftar dan tervalidasi, bukan SQL bebas.
+- Semua perubahan konfigurasi harus diteruskan ke Laravel untuk validasi.
+- Simpan audit perubahan konfigurasi.
+- Tangani timeout, rate limit, dan kegagalan provider.
+
+======================================================================
+11. MODEL DATA / TABEL TAMBAHAN
+======================================================================
+
+Pertahankan tabel inti PRD Versi 2.0:
+- users
+- roles
+- warehouses
+- warehouse_zones
+- storage_locations
+- products
+- vendors
+- inventory_lots
+- inventory_balances
+- inventory_transactions
+- stocktake_sessions
+- stocktake_items
+- ai_findings
+- audit_logs
+- system_settings
+
+Tambahkan atau perluas tabel berikut sesuai kebutuhan implementasi:
+
+11.1 user_preferences
+- id
+- user_id (FK)
+- preference_key
+- preference_value (JSONB)
+- updated_at
+
+11.2 ai_configurations
+- id
+- config_key (unique)
+- config_value (JSONB)
+- scope (global/warehouse/manager)
+- updated_by (FK users)
+- updated_at
+
+11.3 ai_chat_sessions
+- id
+- user_id (FK)
+- title
+- created_at
+- updated_at
+
+11.4 ai_chat_messages
+- id
+- session_id (FK)
+- role (user/assistant/tool)
+- content
+- tool_name (nullable)
+- tool_result (JSONB, nullable)
+- created_at
+
+11.5 daily_warehouse_reports
+- id
+- warehouse_id (FK)
+- report_date
+- period_start
+- period_end
+- generated_at
+- status (queued/processing/completed/failed)
+- summary_json (JSONB)
+- error_message (nullable)
+- unique sesuai warehouse_id dan report_date/periode
+
+11.6 notifications
+- id
+- user_id (FK)
+- type
+- title
+- message
+- data_json (JSONB)
+- read_at (nullable)
+- created_at
+
+11.7 qr_codes
+- id
+- code (unique)
+- entity_type (product/lot/location)
+- entity_id
+- is_active
+- created_at
+- updated_at
+
+11.8 inventory_transactions tambahan
+- transaction_number (unique)
+- idempotency_key
+- status (pending/posted/rejected/cancelled sesuai workflow)
+- source (manual/qr)
+- metadata_json (JSONB, nullable)
+
+11.9 inventory_lots tambahan
+- expiry_date (nullable; hanya jika relevan)
+- condition_status
+- condition_notes
+- placed_at (nullable)
+
+Gunakan foreign key, unique constraint, check constraint, indeks, dan
+migrasi Laravel. Hindari duplikasi data yang dapat dihitung dari
+transaksi, kecuali ada kebutuhan snapshot/reporting yang jelas.
+
+======================================================================
+12. REST API LARAVEL
+======================================================================
+
+Semua endpoint menggunakan prefix /api/v1. Endpoint terlindungi wajib
+menggunakan autentikasi dan RBAC.
+
+12.1 Auth
+- POST /auth/login
+- POST /auth/logout
+- GET  /auth/me
+
+12.2 Dashboard Manager
+- GET /manager/dashboard/summary
+- GET /manager/dashboard/alerts
+- GET /manager/reports/morning
+- GET /manager/reports/daily
+- POST /manager/reports/generate (jika generate manual diizinkan)
+
+12.3 Operator
+- GET  /operator/home
+- GET  /operator/tasks
+- GET  /operator/history
+
+12.4 Inventaris dan lokasi
+- GET/POST /products
+- GET/PATCH /products/{id}
+- GET /inventory
+- GET /inventory/{productId}
+- GET /inventory/lots/{lotId}
+- GET /locations
+- GET /locations/{locationId}
+- GET /locations/{locationId}/inventory
+
+12.5 Transaksi
+- POST /transactions/receipts
+- POST /transactions/issues
+- POST /transactions/transfers
+- GET  /transactions
+- GET  /transactions/{id}
+
+12.6 QR
+- POST /qr/resolve
+- POST /qr/validate
+- GET  /qr/{code}
+- POST /qr/labels (jika fitur label diimplementasikan)
+
+12.7 AI recommendations
+- GET  /ai/findings
+- GET  /ai/findings/{id}
+- POST /ai/findings/{id}/review
+- POST /ai/findings/{id}/approve
+- POST /ai/findings/{id}/reject
+- POST /ai/findings/{id}/resolve
+- POST /ai/run/{agentType}
+
+12.8 AI Chat Manager
+- POST /manager/ai-chat/sessions
+- GET  /manager/ai-chat/sessions
+- GET  /manager/ai-chat/sessions/{id}
+- POST /manager/ai-chat/sessions/{id}/messages
+- POST /manager/ai-chat/configuration/preview
+- POST /manager/ai-chat/configuration/confirm
+
+12.9 Settings
+- GET  /settings
+- PATCH /settings/profile
+- PATCH /settings/preferences
+- PATCH /settings/ai (Manager dengan izin)
+- PATCH /settings/system (Admin)
+
+12.10 Laporan, notifikasi, audit
+- GET /reports/inventory
+- GET /reports/transactions
+- GET /reports/stocktake
+- GET /reports/capacity
+- GET /reports/aging
+- GET /notifications
+- PATCH /notifications/{id}/read
+- GET /audit-logs (role berwenang)
+
+Nama endpoint final boleh disesuaikan, tetapi kontrak role dan
+tanggung jawabnya harus dipertahankan. Terapkan pagination, filter,
+validasi, response JSON konsisten, dan HTTP status yang tepat.
+
+======================================================================
+13. ALUR UTAMA SISTEM
+======================================================================
+
+13.1 Login dan pemilihan workspace
+1. Pengguna login.
+2. Laravel memverifikasi akun dan role.
+3. React menerima profil dan permission.
+4. Manager masuk ke Manager Dashboard.
+5. Operator masuk ke Operator Workspace.
+6. Admin masuk ke area administrasi khusus.
+7. Backend tetap memeriksa permission pada setiap request.
+
+13.2 Laporan pagi Manager
+1. Laravel Scheduler menjalankan job sesuai waktu gudang.
+2. Job mengambil transaksi pada rentang laporan.
+3. Sistem menghitung barang masuk, keluar, transfer, dan ringkasan stok.
+4. Sistem menandai transaksi yang belum final secara terpisah.
+5. Laporan disimpan sebagai snapshot dengan rentang waktu.
+6. Manager membuka dashboard dan melihat laporan.
+7. Manager dapat membuka detail transaksi sumber.
+
+13.3 Rekomendasi pembelian
+1. Laravel mengambil stok, batas minimum, dan histori keluar.
+2. Laravel mengirim data yang diperlukan ke AI/Data Service.
+3. Agent menghitung kondisi stok dan kebutuhan berdasarkan data tersedia.
+4. Hasil dikembalikan dengan evidence dan keterbatasan data.
+5. Laravel memvalidasi dan menyimpan rekomendasi.
+6. Manager meninjau rekomendasi.
+7. Keputusan pembelian dilakukan oleh Manager melalui proses berwenang.
+
+13.4 AI Chat mengubah konfigurasi
+1. Manager mengirim pesan.
+2. AI memahami maksud dan mengusulkan perubahan konfigurasi.
+3. Sistem menampilkan preview nilai lama dan baru.
+4. Manager mengonfirmasi.
+5. Laravel memeriksa permission dan validasi.
+6. Laravel menyimpan konfigurasi.
+7. Audit log mencatat perubahan.
+8. Sistem menampilkan hasil sebenarnya.
+
+13.5 Barang masuk Operator
+1. Operator scan QR barang atau mencari SKU.
+2. Operator mengisi lot, jumlah, dan lokasi tujuan.
+3. Operator scan QR lokasi atau memilih dari daftar.
+4. Sistem menampilkan ringkasan.
+5. Operator mengonfirmasi.
+6. Laravel memvalidasi dan menyimpan transaksi atomik.
+7. Sistem menampilkan nomor transaksi.
+
+13.6 Barang keluar Operator
+1. Operator scan QR barang.
+2. Sistem menampilkan saldo per lokasi dan lot.
+3. Sistem menyarankan lot FIFO.
+4. Operator memilih lot, lokasi, dan jumlah.
+5. Laravel memvalidasi saldo.
+6. Operator mengonfirmasi.
+7. Laravel mem-posting transaksi dan memperbarui saldo.
+8. Sistem menampilkan bukti transaksi.
+
+13.7 Penempatan barang
+1. Operator scan barang/lot.
+2. Sistem meminta scan lokasi tujuan.
+3. AI memberi rekomendasi lokasi yang memenuhi aturan.
+4. Operator memilih dan memeriksa lokasi.
+5. Operator scan QR lokasi aktual.
+6. Laravel memvalidasi kapasitas dan aturan.
+7. Transaksi transfer disimpan.
+8. Histori lokasi dan audit diperbarui.
+
+======================================================================
+14. KEAMANAN DAN KONSISTENSI
+======================================================================
+
+- Gunakan HTTPS pada produksi.
+- Password di-hash dengan mekanisme aman Laravel.
+- Terapkan RBAC di backend untuk setiap endpoint.
+- Validasi seluruh input di Laravel dan Flask.
+- Gunakan database transaction untuk perubahan stok.
+- Gunakan row locking/concurrency control.
+- Saldo stok tidak boleh negatif.
+- Gunakan idempotency key untuk mencegah transaksi ganda.
+- QR harus divalidasi backend.
+- Jangan menyimpan secret/API key di frontend.
+- Batasi komunikasi Python hanya dari backend yang berwenang.
+- AI Chat tidak boleh menjalankan SQL bebas.
+- Catat perubahan konfigurasi AI dan semua mutasi stok.
+- Jangan menghapus histori transaksi yang sudah diposting.
+- Backup PostgreSQL dan uji pemulihan.
+- Gunakan data fiktif untuk development/testing.
+- Terapkan pembatasan akses dan retensi untuk percakapan AI.
+- Jangan mengirim data perusahaan ke provider AI eksternal tanpa
+  persetujuan dan penilaian keamanan.
+
+======================================================================
+15. TAHAP IMPLEMENTASI
+======================================================================
+
+FASE 1 — Revisi fondasi dan role
+- Audit UI dan route yang sudah ada.
+- Hapus tab Admin dari navigasi utama.
+- Terapkan pemisahan Manager dan Operator.
+- Pertahankan Admin sebagai role teknis.
+- Gabungkan Settings menjadi satu halaman.
+- Terapkan route guard dan RBAC backend.
+
+FASE 2 — Operator mobile workflow
+- Bangun Operator Workspace mobile-first.
+- Barang masuk dan keluar.
+- Scan QR dan input manual.
+- Pencatatan lokasi per lot.
+- Riwayat transaksi Operator.
+- Uji kamera pada perangkat mobile.
+
+FASE 3 — Manager dashboard dan laporan
+- Bangun Manager Dashboard.
+- Ringkasan stok dan transaksi.
+- Laporan pagi.
+- Filter tanggal dan detail transaksi.
+- Notifikasi dan daftar perhatian.
+
+FASE 4 — AI rekomendasi gudang
+- Stock Accuracy Agent.
+- Reorder/Stock Purchase Recommendation.
+- Aging/FIFO dan pemeriksaan kondisi.
+- Slotting/Location Optimization.
+- Capacity/Overstock Detection.
+- Tampilkan evidence, prioritas, dan status.
+
+FASE 5 — AI Chat Manager
+- Integrasikan provider/model AI yang benar-benar tersedia.
+- Tanya jawab berdasarkan data gudang.
+- Preview perubahan konfigurasi.
+- Konfirmasi perubahan melalui Laravel.
+- Audit perubahan.
+- Uji permission dan prompt injection.
+
+FASE 6 — Uji coba dan penyempurnaan
+- Uji satu zona gudang.
+- Uji alur Manager dan Operator.
+- Uji responsive pada beberapa ukuran HP.
+- Uji scan QR.
+- Uji transaksi bersamaan dan idempotency.
+- Evaluasi ketepatan rekomendasi AI.
+- Perbaiki UX berdasarkan masukan pengguna.
+
+======================================================================
+16. ACCEPTANCE CRITERIA
+======================================================================
+
+Aplikasi dianggap memenuhi PRD revisi jika:
+
+ROLE DAN NAVIGASI
+1. Tab Admin tidak muncul pada navigasi utama Manager dan Operator.
+2. Manager dan Operator mendapat dashboard/workspace berbeda.
+3. Role ditentukan dari backend, bukan pilihan bebas pengguna.
+4. Endpoint backend menolak akses role yang tidak berwenang.
+5. Hanya ada satu implementasi halaman Settings.
+6. Konten Settings menyesuaikan role.
+
+MANAGER
+7. Manager Dashboard menampilkan ringkasan stok dan aktivitas.
+8. Manager dapat membuka laporan pagi dengan rentang tanggal jelas.
+9. Laporan menampilkan barang masuk dan keluar secara terpisah.
+10. Laporan dapat ditelusuri ke transaksi sumber.
+11. Rekomendasi pembelian menampilkan stok, batas minimum, alasan,
+    dan keterbatasan data.
+12. Sistem membedakan stok lama dari barang yang benar-benar memiliki
+    tanggal kedaluwarsa.
+13. Manager dapat melihat rekomendasi pemeriksaan stok dan FIFO.
+14. AI Chat dapat menjawab pertanyaan berdasarkan data yang diizinkan.
+15. Perubahan konfigurasi AI memerlukan preview dan konfirmasi.
+16. Semua perubahan konfigurasi tercatat di audit log.
+17. AI tidak dapat melakukan pembelian atau mengubah saldo stok.
+
+OPERATOR
+18. Operator dapat mencatat barang masuk.
+19. Operator dapat mencatat barang keluar.
+20. Operator dapat scan QR barang, lot, dan lokasi.
+21. Operator dapat menggunakan input manual jika scan gagal.
+22. Setiap saldo stok dapat ditelusuri ke lokasi terstruktur.
+23. Operator dapat melihat saran lokasi dari AI.
+24. Operator harus mengonfirmasi lokasi aktual.
+25. Operator dapat melihat riwayat transaksinya.
+26. UI Operator nyaman digunakan di layar HP dan tidak memerlukan
+    tabel horizontal untuk tugas utama.
+27. Transaksi ganda dan saldo negatif ditolak.
+
+KEAMANAN DAN DATA
+28. Semua transaksi stok tercatat dalam audit log.
+29. Penyesuaian stok yang memerlukan persetujuan tidak diterapkan
+    sebelum disetujui.
+30. AI Service tidak menulis saldo stok langsung ke database.
+31. Jika AI tidak tersedia, pencatatan gudang inti tetap berjalan.
+32. Data yang tidak tersedia ditandai, bukan dibuat-buat.
+33. Histori transaksi yang sudah diposting tidak dapat dihapus melalui
+    UI biasa.
+
+======================================================================
+17. OUTPUT YANG DIMINTA DARI AI CODING ASSISTANT
+======================================================================
+
+Saat mengimplementasikan PRD:
+1. Periksa struktur aplikasi yang sudah ada sebelum mengubah kode.
+2. Identifikasi halaman Admin, Manager, Operator, dan Settings yang
+   sudah tersedia.
+3. Buat rencana migrasi dari struktur lama ke struktur revisi.
+4. Jangan menghapus fitur lama yang masih relevan tanpa pengganti.
+5. Terapkan pemisahan role dan route.
+6. Gabungkan Settings menjadi satu implementasi.
+7. Implementasikan UI Manager dan Operator sesuai kebutuhan masing-masing.
+8. Prioritaskan Operator mobile-first.
+9. Implementasikan laporan pagi berdasarkan transaksi nyata.
+10. Implementasikan rekomendasi AI secara bertahap dan dapat dijelaskan.
+11. Implementasikan AI Chat hanya jika provider tersedia dan aman.
+12. Buat migration, seeder, validasi, dan pengujian.
+13. Buat dokumentasi setup dan konfigurasi.
+14. Jangan membuat data dummy seolah-olah data produksi.
+15. Jangan menyatakan fitur selesai jika belum diuji.
+
+Akhir PRD REVISI — SMART WAREHOUSE KARTON
